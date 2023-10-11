@@ -79,7 +79,7 @@ class MyModel:
 
             prefix = '-'.join([model, encoder_name, str(N), str(K)])
             if self.sentence_encoder == 'CNN_LSTM':
-                model = Proto(MY_CNN_LSTM(in_channels=784, out_channels=32, hidden_size=128, num_layers=2, output_size=200, batch_size=batch_size))
+                model = Proto(MY_CNN_LSTM(in_channels=length, out_channels=32, hidden_size=128, num_layers=2, output_size=200, batch_size=batch_size))
             else:
                 model = Proto(self.sentence_encoder)
 
