@@ -1,5 +1,3 @@
-# 自学PYTHON
-# 开发时间 2023/9/30 9:03
 import os
 import random
 import sys
