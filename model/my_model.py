@@ -1,5 +1,3 @@
-# 自学PYTHON
-# 开发时间 2023/9/30 9:02
 import numpy as np
 import torch
 from torch import nn, optim
