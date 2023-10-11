@@ -44,15 +44,15 @@ class MY_CNN_LSTM(nn.Module):
         self.hidden_size = hidden_size
         self.batch_size = batch_size
         self.relu = nn.ReLU(inplace=True)
-        # (batch_size=30, seq_len=24, input_size=7) ---> permute(0, 2, 1)
-        # (30, 7, 24)
+        # (batch_size=1, seq_len=784, input_size=128) ---> permute(0, 2, 1)
+        # (1, 128, 784)
         self.conv = nn.Sequential(
             nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=3),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=3, stride=1)
         )
-        # (batch_size=30, out_channels=32, seq_len-4=20) ---> permute(0, 2, 1)
-        # (30, 20, 32)
+        # (batch_size=1, out_channels=32, seq_len-4=780) ---> permute(0, 2, 1)
+        # (1, 780, 32)
         self.lstm = nn.LSTM(input_size=out_channels, hidden_size=hidden_size,
                             num_layers=num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
