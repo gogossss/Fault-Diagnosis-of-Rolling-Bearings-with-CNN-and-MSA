@@ -73,7 +73,6 @@ class MyModel:
             print("model: {}".format(model))
             print("encoder: {}".format(encoder_name))
 
-
             prefix = '-'.join([model, encoder_name, str(N), str(K)])
             if self.sentence_encoder == 'CNN_LSTM':
                 model = Proto(MY_CNN_LSTM(in_channels=length, out_channels=32, hidden_size=128, num_layers=2, output_size=200, batch_size=batch_size))
@@ -129,7 +128,7 @@ class MyModel:
         print("Start training...")
 
         # Init
-        print('Use bert optim!')
+        print('Use optim!')
         parameters_to_optimize = list(model.named_parameters())
         no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
         parameters_to_optimize = [
