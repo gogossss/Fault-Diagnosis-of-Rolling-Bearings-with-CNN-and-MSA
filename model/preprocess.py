@@ -5,6 +5,7 @@ import os
 from sklearn import preprocessing  # 0-1编码
 from sklearn.model_selection import StratifiedShuffleSplit  # 随机划分，保证每一类比例相同
 import random
+
 from torch.utils import data
 
 
@@ -16,14 +17,18 @@ def prepro(d_path, length=0, number=0, normal=True, rate=[0, 0, 0], enc=False, e
 
     def capture(original_path):
         files = {}
+        print(filenames)
         for i in filenames:
             # 文件路径
             file_path = os.path.join(d_path, i)
             file = loadmat(file_path)
             file_keys = file.keys()
             for key in file_keys:
-                if 'DE' in key:
-                    files[i] = file[key].ravel()
+                if 'B_A_1.mat' in filenames:
+                    files[i] = np.array(file[key]).ravel()
+                else:
+                    if 'DE' in key:
+                        files[i] = file[key].ravel()
         return files
 
     def slice_enc(data, slice_rate=rate[1] + rate[2]):
@@ -145,6 +150,9 @@ class FewRelDataset(data.Dataset):
         d['mask'].append(mask)
 
     def __getitem__(self, index):
+        # np.random.seed(1)
+        # random.seed(1)
+        
         target_classes = random.sample(self.classes, self.N)
         support_set = {'word': [], 'mask': []}
         query_set = {'word': [], 'mask': []}
@@ -155,11 +163,11 @@ class FewRelDataset(data.Dataset):
 
         for i, class_name in enumerate(target_classes):
             indices = np.random.choice(
-                list(range(len(self.data[class_name]))),
+                list(range(len(self.data[i]))),
                 self.K + self.Q, False)
             count = 0
             for j in indices:
-                word, mask = self.__getraw__(self.data[class_name][j])
+                word, mask = self.__getraw__(self.data[i][j])
                 word = torch.tensor(word).long()
                 mask = torch.tensor(mask).long()
                 if count < self.K:
@@ -208,7 +216,7 @@ def collate_fn(data):
 
 
 def get_loader(name, encoder, N, K, Q, batch_size,
-               num_workers=8, collate_fn=collate_fn, na_rate=0, ):
+               num_workers=0, collate_fn=collate_fn, na_rate=0, ):
     dataset = FewRelDataset(name, encoder, N, K, Q, na_rate)
     data_loader = data.DataLoader(dataset=dataset,
                                   batch_size=batch_size,
