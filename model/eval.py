@@ -1,6 +1,9 @@
+# 自学PYTHON
+# 开发时间 2023/9/30 9:03
 import os
 import random
 import sys
+import pandas as pd
 import numpy as np
 import torch
 from sklearn import metrics, tree
@@ -8,14 +11,18 @@ from torch import nn, optim
 from transformers import BertTokenizer, AdamW, get_linear_schedule_with_warmup
 import preprocess
 from preprocess import get_loader
-from guoqing.model.my_model import MyBertModel, Proto, MY_CNN_LSTM
+from my_model import MyBertModel, Proto, MY_CNN_LSTM
+import os
+from my_plot import start_tsne, confusion, plot_data, write_excel_xls
 
 
 class MyModel:
-    def __init__(self, sentence_encoder, random_seed=0):
+    def __init__(self, sentence_encoder, num=3, length=800, random_seed=0):
         self.data_loader = get_loader
         self.random_seed = random_seed
         self.sentence_encoder = sentence_encoder
+        self.num = num
+        self.length = length
 
     def __load_model__(self, ckpt):
         if os.path.isfile(ckpt):
@@ -41,7 +48,6 @@ class MyModel:
             save_ckpt=None,
             N=5, K=1, Q=1,
             batch_size=1,
-            length=784,
             number=300,
             normal=True,
             is_train=True,
@@ -57,12 +63,19 @@ class MyModel:
 
         x_train, y_train, x_valid, y_valid, x_test, y_test, train_data, test_data, val_data = preprocess.prepro(
             d_path=path,
-            length=length,
+            length=self.length,
             number=number,
             normal=normal,
             rate=rate,
             enc=False, enc_step=28, random_seed=self.random_seed)
 
+        
+        start_tsne(x_test, y_test, 'start_tsne.png')
+        plot_data(x_train, 'plot_data.png')
+        # write_excel_xls('x_train.xlsx', 'sheet', pd.DataFrame(x_train))
+        
+
+              
         model = classifier
         if model == 'proto':
             if self.sentence_encoder == 'CNN_LSTM':
@@ -73,22 +86,24 @@ class MyModel:
             print("model: {}".format(model))
             print("encoder: {}".format(encoder_name))
 
+
             prefix = '-'.join([model, encoder_name, str(N), str(K)])
             if self.sentence_encoder == 'CNN_LSTM':
-                model = Proto(MY_CNN_LSTM(in_channels=length, out_channels=32, hidden_size=128, num_layers=2, output_size=200, batch_size=batch_size))
+                # model = Proto(MY_CNN_LSTM(in_channels=length, out_channels=length, hidden_size=int((length*(N*K-4))/(N*K)), num_layers=3, output_size=length,batch_size=batch_size))
+                model = Proto(MY_CNN_LSTM(in_channels=self.length, out_channels=self.length, hidden_size=self.length, num_layers=self.num, output_size=self.length,batch_size=batch_size))
             else:
                 model = Proto(self.sentence_encoder)
 
             if not os.path.exists('checkpoint'):
                 os.mkdir('checkpoint')
-            ckpt = 'checkpoint/{}.pth.tar'.format(prefix)
+            ckpt = 'checkpoint/{}.{}.{}.pth.tar'.format(prefix, self.num, self.length)
             if save_ckpt:
                 ckpt = save_ckpt
             if torch.cuda.is_available():
                 model.cuda()
 
             if is_train == True:
-                self.train(model, prefix, train_data, test_data, val_data, batch_size, trainN, N, K, Q, save_ckpt=ckpt)
+                # self.train(model, prefix, train_data, test_data, val_data, batch_size, trainN, N, K, Q, save_ckpt=ckpt)
                 load_ckpt = ckpt
             else:
                 load_ckpt = 'none'
@@ -112,10 +127,10 @@ class MyModel:
               learning_rate=1e-5,
               lr_step_size=20000,
               weight_decay=1e-5,
-              train_iter=30000,
-              val_iter=50,
-              val_step=500,
-              test_iter=3000,
+              train_iter=12800,
+              val_iter=75,
+              val_step=256,
+              test_iter=75,
               load_ckpt=None,
               save_ckpt=None,
               pytorch_optim=optim.SGD,
@@ -137,10 +152,10 @@ class MyModel:
             {'params': [p for n, p in parameters_to_optimize
                         if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
         ]
-        if use_sgd_for_bert:
-            optimizer = torch.optim.SGD(parameters_to_optimize, lr=learning_rate)
-        else:
-            optimizer = AdamW(parameters_to_optimize, lr=learning_rate, correct_bias=False)
+        # if use_sgd_for_bert:
+        #     optimizer = torch.optim.SGD(parameters_to_optimize, lr=learning_rate)
+        # else:
+        optimizer = AdamW(parameters_to_optimize, lr=learning_rate, correct_bias=False)
         scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_step,
                                                     num_training_steps=train_iter)
 
@@ -168,7 +183,8 @@ class MyModel:
         iter_sample = 0.0
         for it in range(start_iter, start_iter + train_iter):
             if self.sentence_encoder == 'CNN_LSTM':
-                sentence_encoder = MY_CNN_LSTM(in_channels=784, out_channels=40, hidden_size=784, num_layers=2, output_size=128, batch_size=B)
+                # sentence_encoder = MY_CNN_LSTM(in_channels=784, out_channels=40, hidden_size=784, num_layers=2, output_size=128, batch_size=B)
+                sentence_encoder = MY_CNN_LSTM(in_channels=self.length, out_channels=self.length, hidden_size=self.length, num_layers=self.num, output_size=self.length, batch_size=B)
             else:
                 sentence_encoder = self.sentence_encoder
 
@@ -180,7 +196,7 @@ class MyModel:
                 for k in query:
                     query[k] = query[k].cuda()
                 label = label.cuda()
-            logits, pred = model(support, query, N_for_train, K, Q * N_for_train + na_rate * Q)
+            logits, pred, sup, proto, que = model(support, query, N_for_train, K, Q * N_for_train + na_rate * Q)
             loss = model.loss(logits, label) / float(grad_iter)
             right = model.accuracy(pred, label)
 
@@ -197,15 +213,15 @@ class MyModel:
             iter_loss += self.item(loss.data)
             iter_right += self.item(right.data)
             iter_sample += 1
-            print('step: {0:4} | loss: {1:2.6f}, accuracy: {2:3.2f}%'.format(it + 1, iter_loss / iter_sample,
-                                                                               100 * iter_right / iter_sample) + '\r')
-            # sys.stdout.write(
-            #     'step: {0:4} | loss: {1:2.6f}, accuracy: {2:3.2f}%'.format(it + 1, iter_loss / iter_sample,
+            # print('step: {0:4} | loss: {1:2.6f}, accuracy: {2:3.2f}%'.format(it + 1, iter_loss / iter_sample,
             #                                                                    100 * iter_right / iter_sample) + '\r')
-            # sys.stdout.flush()
+            sys.stdout.write(
+                'step: {0:4} | loss: {1:2.6f}, accuracy: {2:3.2f}%'.format(it + 1, iter_loss / iter_sample,
+                                                                               100 * iter_right / iter_sample) + '\r')
+            sys.stdout.flush()
 
             if (it + 1) % val_step == 0:
-                acc = self.eval(model, test_data, val_data, B, N_for_eval, K, Q, val_iter)
+                acc = self.eval(model, test_data, val_data, B, N_for_eval, K, Q, val_iter, best_acc=best_acc)
                 model.train()
                 if acc > best_acc:
                     print('Best checkpoint')
@@ -224,9 +240,10 @@ class MyModel:
              model,
              test_data, val_data,
              B, N, K, Q,
-             eval_iter=200,
+             eval_iter=75,
              na_rate=0,
-             ckpt=None
+             ckpt=None,
+             best_acc=0
              ):
 
         print("")
@@ -251,8 +268,9 @@ class MyModel:
         with torch.no_grad():
             for it in range(eval_iter):
                 if self.sentence_encoder == 'CNN_LSTM':
-                    sentence_encoder = MY_CNN_LSTM(in_channels=784, out_channels=32, hidden_size=784, num_layers=2,
-                                                   output_size=128, batch_size=B)
+                    # sentence_encoder = MY_CNN_LSTM(in_channels=784, out_channels=32, hidden_size=784, num_layers=2,
+                    #                                output_size=128, batch_size=B)
+                    sentence_encoder = MY_CNN_LSTM(in_channels=self.length, out_channels=self.length, hidden_size=self.length, num_layers=self.num, output_size=self.length, batch_size=B)
                 else:
                     sentence_encoder = self.sentence_encoder
                 support, query, label = next(self.data_loader(eval_dataset, sentence_encoder,
@@ -263,18 +281,59 @@ class MyModel:
                     for k in query:
                         query[k] = query[k].cuda()
                     label = label.cuda()
-                logits, pred = model(support, query, N, K, Q * N + Q * na_rate)
+                logits, pred, sup, proto, que = model(support, query, N, K, Q * N + Q * na_rate)
+                que = que.view(Q * N + Q * na_rate, -1)
 
                 right = model.accuracy(pred, label)
                 iter_right += self.item(right.data)
                 iter_sample += 1
-                print('[EVAL] step: {0:4} | accuracy: {1:3.2f}%'.format(it + 1, 100 * iter_right / iter_sample) + '\r')
-                # sys.stdout.write(
-                #     '[EVAL] step: {0:4} | accuracy: {1:3.2f}%'.format(it + 1, 100 * iter_right / iter_sample) + '\r')
-                # sys.stdout.flush()
+                # print('[EVAL] step: {0:4} | accuracy: {1:3.2f}%'.format(it + 1, 100 * iter_right / iter_sample) + '\r')
+                sys.stdout.write(
+                    '[EVAL] step: {0:4} | accuracy: {1:3.2f}%'.format(it + 1, 100 * iter_right / iter_sample) + '\r')
+                sys.stdout.flush()
+
+                if it == 0:
+                    sup_ = sup
+                    que_ = que
+                    pred_ = pred
+                    label_ = label
+                    
+                else:
+                    sup_ = torch.cat((sup_, sup), 0)
+                    que_ = torch.cat((que_, que), 0)
+                    pred_ = torch.cat((pred_, pred), 0)
+                    label_ = torch.cat((label_, label), 0)
+                
             print("")
+        
+       
+        sup_ = sup_.cpu().numpy()
+        que_ = que_.cpu().numpy()
+        pred_ = pred_.cpu().numpy()
+        label_ = label_.cpu().numpy()
+         
+        if ckpt is None:
+            if iter_right / iter_sample <= best_acc:
+                pass
+        
+            else:
+                from sklearn.metrics import classification_report
+                print(classification_report(label_, pred_, digits=4))
+
+                confusion(label_, label_, pred_, 'confusion_eval.png')
+        
+        else:
+            from sklearn.metrics import classification_report
+            print(classification_report(label_, pred_, digits=4))
+
+            start_tsne(que_, pred_, 'start_tsne_eval.png')
+            confusion(label_, label_, pred_, 'confusion_test.png')
+            plot_data(que_, 'plot_data_eval.png')
+        
         return iter_right / iter_sample
+        
+
 
 if __name__ == '__main__':
     # MyModel(sentence_encoder=MyBertModel('bert-base-uncased', 128)).run(classifier='proto', path=r'D:\python\guoqing\data')
-    MyModel(sentence_encoder='CNN_LSTM').run(classifier='proto', path=r'D:\python\guoqing\data')
+    MyModel(sentence_encoder='CNN_LSTM').run(classifier='proto', path=r'data')
