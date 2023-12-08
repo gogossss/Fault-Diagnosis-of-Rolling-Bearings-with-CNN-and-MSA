@@ -1,8 +1,13 @@
+# 自学PYTHON
+# 开发时间 2023/9/30 9:02
 import numpy as np
 import torch
 from torch import nn, optim
 from transformers import BertTokenizer, BertModel
 from torchvision import transforms as T
+
+from selfcoder import selfcoder
+
 
 class MyBertModel(nn.Module):
     def __init__(self, pretrain_path, max_length=512, cat_entity_rep=False, mask_entity=False):
@@ -44,30 +49,33 @@ class MY_CNN_LSTM(nn.Module):
         self.hidden_size = hidden_size
         self.batch_size = batch_size
         self.relu = nn.ReLU(inplace=True)
-        # (batch_size=1, seq_len=784, input_size=128) ---> permute(0, 2, 1)
-        # (1, 128, 784)
+        # (batch_size=30, seq_len=24, input_size=7) ---> permute(0, 2, 1)
+        # (30, 7, 24)
         self.conv = nn.Sequential(
             nn.Conv1d(in_channels=in_channels, out_channels=out_channels, kernel_size=3),
             nn.ReLU(),
             nn.MaxPool1d(kernel_size=3, stride=1)
         )
-        # (batch_size=1, out_channels=32, seq_len-4=780) ---> permute(0, 2, 1)
-        # (1, 780, 32)
-        self.lstm = nn.LSTM(input_size=out_channels, hidden_size=hidden_size,
-                            num_layers=num_layers, batch_first=True)
+        # (batch_size=30, out_channels=32, seq_len-4=20) ---> permute(0, 2, 1)
+        # (30, 20, 32)
+        # self.lstm = nn.LSTM(input_size=out_channels, hidden_size=hidden_size,
+        #                     num_layers=num_layers, batch_first=True)
+        self.selfcoder = selfcoder(n_layers=num_layers, d_model=hidden_size, n_heads=num_layers)
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x):
         x = x['word'].float()
         t = x.size(0)
         x = x.view(self.batch_size, t, x.size(1))
-        #TODO:用mask还能添加注意力机制
         x = x.permute(0, 2, 1)
         x = self.conv(x)
         x = x.permute(0, 2, 1)
-        x, _ = self.lstm(x)
+        # x, _ = self.lstm(x)
+        # x = x.contiguous().view(self.batch_size, t, -1)
+        x = self.selfcoder(x)
         x = self.fc(x)
-        x = x.view(self.batch_size, t, -1)
+        x = x.contiguous().view(self.batch_size, t, -1)
+
         return x
 
     def tokenize(self, raw_tokens):
@@ -128,7 +136,7 @@ class Proto(FewShotREModel):
     def __init__(self, sentence_encoder, dot=False):
         FewShotREModel.__init__(self, sentence_encoder)
         # self.fc = nn.Linear(hidden_size, hidden_size)
-        self.drop = nn.Dropout(0.1)
+        self.drop = nn.Dropout(0.5)
         self.dot = dot
 
     def __dist__(self, x, y, dim):
@@ -166,15 +174,16 @@ class Proto(FewShotREModel):
 
         support = support.view(-1, N, K, hidden_size)  # (B, N, K, D)
         query = query.view(-1, total_Q, hidden_size)  # (B, total_Q, D)
+        # TODO:把support和query的分类结果和query都用二维图展现出来
 
         # Prototypical Networks
         # Ignore NA policy
-        support = torch.mean(support, 2)  # Calculate prototype for each class
-        logits = self.__batch_dist__(support, query)  # (B, total_Q, N)
+        support_proto = torch.mean(support, 2)  # Calculate prototype for each class
+        logits = self.__batch_dist__(support_proto, query)  # (B, total_Q, N)
         minn, _ = logits.min(-1)
         logits = torch.cat([logits, minn.unsqueeze(2) - 1], 2)  # (B, total_Q, N + 1)
         _, pred = torch.max(logits.view(-1, N + 1), 1)
-        return logits, pred
+        return logits, pred, support, support_proto, query
 
 
 
