@@ -86,8 +86,9 @@ class selfcoder(nn.Module):
     # 实现
     def forward(self, input):
         # output是Embedding层的输出
+        output = input
         for layer in self.layers:
-            output, enc_self_attn = layer(input)
+            output, enc_self_attn = layer(output)
         output = self.linear(output)
         return output
 
